@@ -6,7 +6,6 @@
 // +build windows
 
 // Package svc provides everything required to build Windows service.
-//
 package svc
 
 import (
@@ -79,6 +78,17 @@ type Status struct {
 	Win32ExitCode           uint32 // set if the service has exited with a win32 exit code
 	ServiceSpecificExitCode uint32 // set if the service has exited with a service-specific exit code
 }
+
+// StartReason is the reason that the service was started.
+type StartReason uint32
+
+const (
+	StartReasonDemand           = StartReason(windows.SERVICE_START_REASON_DEMAND)
+	StartReasonAuto             = StartReason(windows.SERVICE_START_REASON_AUTO)
+	StartReasonTrigger          = StartReason(windows.SERVICE_START_REASON_TRIGGER)
+	StartReasonRestartOnFailure = StartReason(windows.SERVICE_START_REASON_RESTART_ON_FAILURE)
+	StartReasonDelayedAuto      = StartReason(windows.SERVICE_START_REASON_DELAYEDAUTO)
+)
 
 // ChangeRequest is sent to the service Handler to request service status change.
 type ChangeRequest struct {
@@ -284,7 +294,20 @@ func Run(name string, handler Handler) error {
 
 // StatusHandle returns service status handle. It is safe to call this function
 // from inside the Handler.Execute because then it is guaranteed to be set.
-// This code will have to change once multiple services are possible per process.
 func StatusHandle() windows.Handle {
 	return theService.h
+}
+
+// DynamicStartReason returns the reason why the service was started. It is safe
+// to call this function from inside the Handler.Execute because then it is
+// guaranteed to be set.
+func DynamicStartReason() (StartReason, error) {
+	var allocReason *uint32
+	err := windows.QueryServiceDynamicInformation(theService.h, windows.SERVICE_DYNAMIC_INFORMATION_LEVEL_START_REASON, unsafe.Pointer(&allocReason))
+	if err != nil {
+		return 0, err
+	}
+	reason := StartReason(*allocReason)
+	windows.LocalFree(windows.Handle(unsafe.Pointer(allocReason)))
+	return reason, nil
 }
